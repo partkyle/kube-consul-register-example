@@ -15,7 +15,7 @@ minikube   Ready     <none>    3m        v1.8.0
 
 # Set up the consul service
 
-The file [config/consul.yaml](config/consul-yaml) includes a service
+The file [config/consul.yaml](config/consul.yaml) includes a service
 and a deployment for consul. Apply it to kubernetes using the following:
 
 ```
