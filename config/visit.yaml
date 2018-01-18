@@ -17,14 +17,6 @@ metadata:
   name: visit
   labels:
     app: visit
-  annotations:
-    # these are the annotations that kube-consul-register will look for in order
-    # to determine if it should register.
-    #
-    # We also override the name so it doesn't include the guid associated
-    # with this replicaset.
-    consul.register/enabled: 'true'
-    consul.register/service.name: 'visit'
 spec:
   type: NodePort 
   ports:
@@ -47,7 +39,14 @@ spec:
     metadata:
       labels:
         app: visit
-        tier: frontend
+      annotations:
+        # these are the annotations that kube-consul-register will look for in order
+        # to determine if it should register.
+        #
+        # We also override the name so it doesn't include the guid associated
+        # with this replicaset.
+        consul.register/enabled: 'true'
+        consul.register/service.name: 'visit'
     spec:
       containers:
       - name: visit
