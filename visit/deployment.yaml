@@ -1,29 +1,3 @@
-apiVersion: v1
-data:
-    VISIT_HOST: "0.0.0.0"
-    VISIT_PORT: "80"
-    VISIT_REDISADDR: "redis-master:6379"
-    VISIT_REDISKEY: "visit.count"
-kind: ConfigMap
-metadata:
-    name: visit
-    namespace: default
-
----
-
-apiVersion: v1
-kind: Service
-metadata:
-  name: visit
-  labels:
-    app: visit
-spec:
-  type: NodePort 
-  ports:
-  - port: 80
-  selector:
-    app: visit
-
 ---
 
 apiVersion: apps/v1beta2

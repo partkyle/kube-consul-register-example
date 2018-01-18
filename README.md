@@ -13,15 +13,22 @@ NAME       STATUS    ROLES     AGE       VERSION
 minikube   Ready     <none>    3m        v1.8.0
 ```
 
+*NOTE*: To make these cluster IPs available on a mac running minikube, you can
+run the following command. This will not persist on a reboot.
+
+```
+sudo route -n add 172.17.0.0/16 $(minikube ip)
+```
+
 # Set up the consul service
 
-The file [config/consul.yaml](config/consul.yaml) includes a service
+The file [consul](consul) directory includes a service
 and a deployment for consul. Apply it to kubernetes using the following:
 
 ```
-$ kubectl apply -f config/consul.yaml
-service "consul" created
+cat consul/*.yaml | kubectl create -f -
 deployment "consul" created
+service "consul" created
 ```
 
 Wait until the pods are started:
@@ -29,20 +36,22 @@ Wait until the pods are started:
 ```
 $ kubectl get pods
 NAME                      READY     STATUS    RESTARTS   AGE
-consul-6fccf6744f-vjktx   1/1       Running   0          40s
+consul-6fccf6744f-7dg5q   1/1       Running   0          23s
 ```
 
-The service should be exposed via NodePort:
+The service defintion should look like below.
+*Note: The service is required if we want consul to be discoverable
+via dns on other pods*.
 
 ```
 $ kubectl describe services consul
 Name:              consul
 Namespace:         default
 Labels:            app=consul
-Annotations:       kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"consul"},"name":"consul","namespace":"default"},"spec":{"ports":[{"na...
+Annotations:       <none>
 Selector:          app=consul
 Type:              ClusterIP
-IP:                10.99.232.29
+IP:                10.109.113.235
 Port:              http  8500/TCP
 TargetPort:        8500/TCP
 Endpoints:         172.17.0.4:8500
@@ -56,39 +65,34 @@ Events:            <none>
 Consul should be available on http://172.17.0.4:8500/ in this example, and
 should have only `consul` as a serivce.
 
-*NOTE*: To make these addresses available on a mac running minikube, you can
-run the following command. This will not persist on a reboot.
-
-```
-sudo route -n add 172.17.0.0/16 $(minikube ip)
-```
-
 # Set up kube-consul-register
 
-The [config/kube-consul-register.yaml](config/kube-consul-register.yaml) file
-includes a config map and a replicaset for the kube-consul-register container.
+The [kube-consul-register](kube-consul-register) directory includes a
+config map and a deployment for the kube-consul-register container. The config
+map includes many of the tuning options for the. For this example, we are using
+pod based discovery, which will insert a service entry for each pod.
 
 ```
-$ kubectl create -f config/kube-consul-register.yaml
+$ cat kube-consul-register/*.yaml | kubectl create -f -
 configmap "kube-consul-register" created
-replicaset "kube-consul-register" created
-$ kubectl get pods
-NAME                         READY     STATUS              RESTARTS   AGE
-consul-6fccf6744f-vjktx      1/1       Running             0          16m
-kube-consul-register-d2jkl   0/1       ContainerCreating   0          4s
+deployment "kube-consul-register" created
 ```
 
 Viewing the logs we can see that it has connected to consul successfully,
 but there isn't anything for it to register.
 
 ```
-$ kubectl logs kube-consul-register-d2jkl
-I0117 22:15:48.862424       1 main.go:64] Using build: v0.1.6
-I0117 22:15:48.889853       1 main.go:98] Current configuration: Controller: &config.ControllerConfig{ConsulAddress:"consul", ConsulPort:"8500", ConsulScheme:"http", ConsulCAFile:"", ConsulCertFile:"", ConsulKeyFile:"", ConsulInsecureSkipVerify:false, ConsulToken:"", ConsulTimeout:2000000000, ConsulContainerName:"consul", ConsulNodeSelector:"consul=enabled", PodLabelSelector:"", K8sTag:"kubernetes", RegisterMode:"single"}, Consul: &api.Config{Address:"127.0.0.1:8500", Scheme:"http", Datacenter:"", HttpClient:(*http.Client)(0xc42032a0f0), HttpAuth:(*api.HttpBasicAuth)(nil), WaitTime:0, Token:""}
-I0117 22:15:48.890136       1 main.go:128] Start syncing...
-I0117 22:15:48.898982       1 main.go:133] Synchronization's been ended
-I0117 22:15:48.899048       1 main.go:112] Start cleaning...
-I0117 22:15:48.902840       1 main.go:117] Cleaning has been ended
+$ kubectl get pods
+NAME                                    READY     STATUS    RESTARTS   AGE
+consul-6fccf6744f-7dg5q                 1/1       Running   0          2m
+kube-consul-register-69db9f647d-qgq2b   1/1       Running   0          19s
+$ kubectl logs kube-consul-register-69db9f647d-qgq2b
+I0118 22:07:01.824554       1 main.go:64] Using build: v0.1.6
+I0118 22:07:01.840267       1 main.go:98] Current configuration: Controller: &config.ControllerConfig{ConsulAddress:"consul", ConsulPort:"8500", ConsulScheme:"http", ConsulCAFile:"", ConsulCertFile:"", ConsulKeyFile:"", ConsulInsecureSkipVerify:false, ConsulToken:"", ConsulTimeout:2000000000, ConsulContainerName:"consul", ConsulNodeSelector:"consul=enabled", PodLabelSelector:"", K8sTag:"kubernetes", RegisterMode:"single", RegisterSource:"pod"}, Consul: &api.Config{Address:"127.0.0.1:8500", Scheme:"http", Datacenter:"", HttpClient:(*http.Client)(0xc42000f500), HttpAuth:(*api.HttpBasicAuth)(nil), WaitTime:0, Token:""}
+I0118 22:07:01.840465       1 main.go:128] Start syncing...
+I0118 22:07:01.855795       1 main.go:133] Synchronization's been ended
+I0118 22:07:01.856294       1 main.go:112] Start cleaning...
+I0118 22:07:01.868502       1 main.go:117] Cleaning has been ended
 ```
 
 # Set up the redis the visit pod will use
@@ -96,26 +100,26 @@ I0117 22:15:48.902840       1 main.go:117] Cleaning has been ended
 In this example we want the redis to persist when visit restarts,
 so it needs to be in its own pod.
 
-To start it use [config/redis.yaml](config/redis.yaml).
+To start it use yaml in the [redis-master](redis-master) directory.
 
 ```
-$ kubectl apply -f config/redis-master.yaml
-service "redis-master" created
+$ cat redis-master/*.yaml | kubectl create -f -
 deployment "redis-master" created
+service "redis-master" created
 ```
 
 Pods should now look like this:
 
 ```
 $ kubectl get pods
-NAME                            READY     STATUS    RESTARTS   AGE
-consul-6fccf6744f-vjktx         1/1       Running   0          10m
-redis-master-64d75bff65-9cd22   1/1       Running   0          16s
+NAME                                    READY     STATUS    RESTARTS   AGE
+consul-6fccf6744f-7dg5q                 1/1       Running   0          3m
+kube-consul-register-69db9f647d-qgq2b   1/1       Running   0          1m
+redis-master-64d75bff65-xsl5d           1/1       Running   0          10s
 ```
 
-And the service for redis shows that its NodePort is available. This is not
-necessary for the application, since redis doesn't need to be exposed. I just
-left it in to allow for easy debugging.
+And the service for redis shows that its ClusterIP is available. We need the service
+definition as well as the `visit` application uses dns to find the redis-master.
 
 ```
 $ kubectl describe services redis-master
@@ -126,7 +130,7 @@ Labels:            app=redis
 Annotations:       <none>
 Selector:          app=redis,role=master
 Type:              ClusterIP
-IP:                10.111.193.74
+IP:                10.97.56.142
 Port:              <unset>  6379/TCP
 TargetPort:        6379/TCP
 Endpoints:         172.17.0.6:6379
@@ -137,14 +141,13 @@ Events:            <none>
 And redis is reachable as well:
 
 ```
-$ redis-cli -h 172.17.0.6
-172.17.0.6:6379> info
+$ redis-cli -h 172.17.0.6 info | head -2
 # Server
 redis_version:3.2.11
 ```
 
 Note that the consul registrator does not pick this container up, as it
-is not annotated.
+is not annotated to do so.
 
 ```
 $ kubectl logs kube-consul-register-d2jkl
@@ -158,30 +161,22 @@ I0117 22:21:48.923995       1 main.go:133] Synchronization's been ended
 # Create the visit service to test the consul integration
 
 Now that everything is in place, we can test the consul integration using
-[config/visit.yaml](config/visit.yaml). This file includes a configmap, a service,
-and a deployment of a container that's hosted on hub.docker.com.
+[visit](visit). This directory includes a configmap, a service, and a
+deployment of a container that's hosted on hub.docker.com.
 
 ```
-$ kubectl create -f config/visit.yaml
+$ cat visit/*.yaml | kubectl create -f -
 configmap "visit" created
-service "visit" created
 deployment "visit" created
+service "visit" created
 ```
 
 Showing the logs of the pods should show that the app is running:
 
 ```
-$ kubectl get pods
-NAME                            READY     STATUS    RESTARTS   AGE
-consul-6fccf6744f-vjktx         1/1       Running   0          48m
-kube-consul-register-rm82l      1/1       Running   0          52s
-redis-master-64d75bff65-tmwrx   1/1       Running   0          29m
-visit-555f6784db-62dk7          1/1       Running   0          5s
-visit-555f6784db-8b59q          1/1       Running   0          5s
-visit-555f6784db-rsqnd          1/1       Running   0          5s
-$ kubectl logs visit-555f6784db-62dk7
-2018/01/17 22:47:31 starting version 0.2.0 with config: {Host:0.0.0.0 Port:80 RedisKey:visit.count RedisADDR:redis-master:6379 RedisPassword: RedisDB:0}
-2018/01/17 22:47:31 listening on "[::]:80"
+$ kubectl logs visit-f8c7964d9-56t4l
+2018/01/18 22:24:51 starting version 0.4.0 with config: {Host:0.0.0.0 Port:80 RedisKey:visit.count RedisADDR:redis-master:6379 RedisPassword: RedisDB:0}
+2018/01/18 22:24:51 listening on "[::]:80"
 ```
 
 The pod defined for `visit` should include the annotations. These are what tells
@@ -190,30 +185,9 @@ kube-consul-register what to register in consul.
 ```
 $ kubectl describe services visit
 Name:                     visit
-Namespace:                default
-Labels:                   app=visit
-Annotations:              <none>
-Selector:                 app=visit
-Type:                     NodePort
-IP:                       10.103.164.68
-Port:                     <unset>  80/TCP
-TargetPort:               80/TCP
-NodePort:                 <unset>  31691/TCP
-Endpoints:                <none>
-Session Affinity:         None
-External Traffic Policy:  Cluster
-Events:                   <none>
-$ kubectl describe pods visit-f8c7964d9-6rxc8
-Name:           visit-f8c7964d9-6rxc8
-Namespace:      default
-Node:           minikube/192.168.99.100
-Start Time:     Wed, 17 Jan 2018 15:29:17 -0800
-Labels:         app=visit
-                pod-template-hash=947352085
+...
 Annotations:    consul.register/enabled=true
                 consul.register/service.name=visit
-                kubernetes.io/created-by={"kind":"SerializedReference","apiVersion":"v1","reference":{"kind":"ReplicaSet","namespace":"default","name":"visit-f8c7964d9","uid":"3cac1db2-fbde-11e7-81e6-0800275bd293","a...
-Status:         Running
 ...
 ```
 
@@ -221,22 +195,22 @@ And viewing the logs of our kube-consul-register pod should show that something
 was noticed and regstered to consul.
 
 ```
-$ kubectl logs kube-consul-register-srrt4
+$ kubectl logs kube-consul-register-69db9f647d-4kqpb
+I0118 22:23:55.243752       1 main.go:64] Using build: v0.1.6
 ...
-I0117 23:20:17.757423       1 controller.go:352] POD UPDATE: Name: visit-f8c7964d9-qmhp7, Namespace: default, Phase: Running, Ready: True
-I0117 23:20:17.757479       1 controller.go:365] Container visit in POD visit-f8c7964d9-qmhp7 has status: Ready:true
-I0117 23:20:17.757485       1 controller.go:369] Adding service for container visit in POD visit-f8c7964d9-qmhp7 to consul
-I0117 23:20:17.760500       1 controller.go:385] Service's been registered, Name: visit, ID: visit-f8c7964d9-qmhp7-visit
-I0117 23:20:18.342157       1 controller.go:352] POD UPDATE: Name: visit-f8c7964d9-qhzjl, Namespace: default, Phase: Running, Ready: True
-I0117 23:20:18.342230       1 controller.go:365] Container visit in POD visit-f8c7964d9-qhzjl has status: Ready:true
-I0117 23:20:18.342240       1 controller.go:369] Adding service for container visit in POD visit-f8c7964d9-qhzjl to consul
-I0117 23:20:18.343525       1 controller.go:385] Service's been registered, Name: visit, ID: visit-f8c7964d9-qhzjl-visit
-I0117 23:20:18.941233       1 controller.go:352] POD UPDATE: Name: visit-f8c7964d9-dknn8, Namespace: default, Phase: Running, Ready: True
-I0117 23:20:18.941277       1 controller.go:365] Container visit in POD visit-f8c7964d9-dknn8 has status: Ready:true
-I0117 23:20:18.941284       1 controller.go:369] Adding service for container visit in POD visit-f8c7964d9-dknn8 to consul
-I0117 23:20:18.942230       1 controller.go:385] Service's been registered, Name: visit, ID: visit-f8c7964d9-dknn8-visit
-I0117 23:21:04.518183       1 main.go:128] Start syncing...
-I0117 23:21:04.524953       1 main.go:133] Synchronization's been ended
+I0118 22:24:52.504721       1 controller.go:352] POD UPDATE: Name: visit-f8c7964d9-r2pm2, Namespace: default, Phase: Running, Ready: True
+I0118 22:24:52.504749       1 controller.go:365] Container visit in POD visit-f8c7964d9-r2pm2 has status: Ready:true
+I0118 22:24:52.504800       1 controller.go:369] Adding service for container visit in POD visit-f8c7964d9-r2pm2 to consul
+I0118 22:24:52.506202       1 controller.go:385] Service's been registered, Name: visit, ID: visit-f8c7964d9-r2pm2-visit
+I0118 22:24:52.533055       1 controller.go:352] POD UPDATE: Name: visit-f8c7964d9-56t4l, Namespace: default, Phase: Running, Ready: True
+I0118 22:24:52.533076       1 controller.go:365] Container visit in POD visit-f8c7964d9-56t4l has status: Ready:true
+I0118 22:24:52.533108       1 controller.go:369] Adding service for container visit in POD visit-f8c7964d9-56t4l to consul
+I0118 22:24:52.533950       1 controller.go:385] Service's been registered, Name: visit, ID: visit-f8c7964d9-56t4l-visit
+I0118 22:24:52.549663       1 controller.go:352] POD UPDATE: Name: visit-f8c7964d9-srvlh, Namespace: default, Phase: Running, Ready: True
+I0118 22:24:52.549693       1 controller.go:365] Container visit in POD visit-f8c7964d9-srvlh has status: Ready:true
+I0118 22:24:52.549698       1 controller.go:369] Adding service for container visit in POD visit-f8c7964d9-srvlh to consul
+I0118 22:24:52.550806       1 controller.go:385] Service's been registered, Name: visit, ID: visit-f8c7964d9-srvlh-visit
+...
 ```
 
 And accessing the consul interface should show the available services:
@@ -246,14 +220,14 @@ $ curl 172.17.0.4:8500/v1/catalog/services
 {
     "consul": [],
     "visit": [
+        "app:visit",
         "pod-template-hash:947352085",
         "kubernetes",
-        "pod:visit-f8c7964d9-qhzjl",
-        "pod:visit-f8c7964d9-qmhp7",
-        "pod:visit-f8c7964d9-dknn8",
+        "pod:visit-f8c7964d9-r2pm2",
+        "pod:visit-f8c7964d9-srvlh",
+        "pod:visit-f8c7964d9-56t4l",
         "node:minikube",
-        "container:visit",
-        "app:visit"
+        "container:visit"
     ]
 }
 ```
@@ -269,5 +243,9 @@ And hitting any of those ip's should result in hitting the individual pod associ
 
 ```
 $ curl 172.17.0.8
-The current visit count is 1 on visit-f8c7964d9-6rxc8 running version 0.4.0.
+The current visit count is 1 on visit-f8c7964d9-srvlh running version 0.4.0.
+$ curl 172.17.0.7
+The current visit count is 2 on visit-f8c7964d9-r2pm2 running version 0.4.0.
+$ curl 172.17.0.9
+The current visit count is 3 on visit-f8c7964d9-56t4l running version 0.4.0.
 ```
