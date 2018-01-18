@@ -13,8 +13,8 @@ NAME       STATUS    ROLES     AGE       VERSION
 minikube   Ready     <none>    3m        v1.8.0
 ```
 
-*NOTE*: To make these cluster IPs available on a mac running minikube, you can
-run the following command. This will not persist on a reboot.
+*NOTE: To make these cluster IPs available on a mac running minikube, you can
+run the following command. This will not persist on a reboot.*
 
 ```
 sudo route -n add 172.17.0.0/16 $(minikube ip)
@@ -248,4 +248,133 @@ $ curl 172.17.0.7
 The current visit count is 2 on visit-f8c7964d9-r2pm2 running version 0.4.0.
 $ curl 172.17.0.9
 The current visit count is 3 on visit-f8c7964d9-56t4l running version 0.4.0.
+```
+
+# Nodeport example
+
+If you wanted to use the NodePort and register that with consul again, that is an option.
+The kube-consul-register needs to be configured to use `register_source: "service"`.
+
+There are example files include in the [nodeport](nodeport) directory.
+
+First load the nodeport service for the visit app:
+
+```
+$ kubectl create -f nodeport/visit-nodeport.yaml
+service "visit-nodeport" created
+```
+
+This will define a service like the one below:
+
+```
+$ kubectl describe services visit-nodeport
+Name:                     visit-nodeport
+Namespace:                default
+Labels:                   app=visit
+Annotations:              consul.register/enabled=true
+                          consul.register/service.name=visit-nodeport
+Selector:                 app=visit
+Type:                     NodePort
+IP:                       10.98.95.213
+Port:                     <unset>  80/TCP
+TargetPort:               80/TCP
+NodePort:                 <unset>  31639/TCP
+Endpoints:                172.17.0.7:80,172.17.0.8:80,172.17.0.9:80
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+```
+
+The port at NodePort is available on the node that is running this pod. In this example,
+that is minikube. You can find minikube's ip using the following command:
+
+```
+$ minikube ip
+192.168.99.100
+```
+
+Using the NodePort from earlier, in this example 31639, we should be able to hit the application.
+
+```
+$ curl 192.168.99.100:31639
+The current visit count is 22 on visit-f8c7964d9-r2pm2 running version 0.4.0.
+$ curl 192.168.99.100:31639
+The current visit count is 23 on visit-f8c7964d9-srvlh running version 0.4.0.
+$ curl 192.168.99.100:31639
+The current visit count is 24 on visit-f8c7964d9-srvlh running version 0.4.0.
+$ curl 192.168.99.100:31639
+The current visit count is 25 on visit-f8c7964d9-56t4l running version 0.4.0.
+```
+
+*Note that kubernetes is load-balancing between the 3 pods behind the scenes.*
+
+We can apply the new config over the existing configmap:
+
+```
+$ kubectl apply -f nodeport/kube-consul-register-config-nodeport.yaml
+configmap "kube-consul-register" configured
+```
+
+This doesn't change the running pod though, since it was configured with the
+previous configmap at startup. Since this pod is managed by a deployment,
+and an underlying replicaset, we can simply delete the pod and it will be
+restarted.
+
+```
+$ kubectl get pods
+NAME                                    READY     STATUS    RESTARTS   AGE
+consul-6fccf6744f-pfqdf                 1/1       Running   0          36m
+kube-consul-register-69db9f647d-2kg4g   1/1       Running   0          45s
+redis-master-64d75bff65-574t6           1/1       Running   0          35m
+visit-f8c7964d9-56t4l                   1/1       Running   0          35m
+visit-f8c7964d9-r2pm2                   1/1       Running   0          35m
+visit-f8c7964d9-srvlh                   1/1       Running   0          35m
+$ kubectl delete pod kube-consul-register-69db9f647d-2kg4g
+pod "kube-consul-register-69db9f647d-2kg4g" deleted
+```
+
+The old pod will be terminated and a new one will start.
+
+```
+$ kubectl get pods
+NAME                                    READY     STATUS        RESTARTS   AGE
+consul-6fccf6744f-pfqdf                 1/1       Running       0          36m
+kube-consul-register-69db9f647d-2kg4g   0/1       Terminating   0          55s
+kube-consul-register-69db9f647d-c7cj9   1/1       Running       0          4s
+redis-master-64d75bff65-574t6           1/1       Running       0          35m
+visit-f8c7964d9-56t4l                   1/1       Running       0          35m
+visit-f8c7964d9-r2pm2                   1/1       Running       0          35m
+visit-f8c7964d9-srvlh                   1/1       Running       0          35m
+```
+
+We'll notice in the logs that not only will the NodePort service be registered
+with consul, the old services will be removed as well.
+
+```
+$ kubectl logs kube-consul-register-69db9f647d-c7cj9
+I0118 23:00:00.633740       1 main.go:64] Using build: v0.1.6
+I0118 23:00:00.642927       1 main.go:98] Current configuration: Controller: &config.ControllerConfig{ConsulAddress:"consul", ConsulPort:"8500", ConsulScheme:"http", ConsulCAFile:"", ConsulCertFile:"", ConsulKeyFile:"", ConsulInsecureSkipVerify:false, ConsulToken:"", ConsulTimeout:2000000000, ConsulContainerName:"consul", ConsulNodeSelector:"consul=enabled", PodLabelSelector:"", K8sTag:"kubernetes", RegisterMode:"single", RegisterSource:"service"}, Consul: &api.Config{Address:"127.0.0.1:8500", Scheme:"http", Datacenter:"", HttpClient:(*http.Client)(0xc4202d0900), HttpAuth:(*api.HttpBasicAuth)(nil), WaitTime:0, Token:""}
+I0118 23:00:00.643123       1 main.go:128] Start syncing...
+I0118 23:00:00.654860       1 controller.go:437] Service visit-nodeport has been registered in Consul with ID: visit-nodeport-dfb24631-fc9f-11e7-90d0-08002727dcb4-192.168.99.100-31639
+I0118 23:00:00.654911       1 main.go:133] Synchronization's been ended
+I0118 23:00:00.654933       1 main.go:112] Start cleaning...
+I0118 23:00:00.655060       1 controller.go:284] Add node.
+I0118 23:00:00.666666       1 controller.go:147] Service  has been deregistered in Consul with ID: visit-f8c7964d9-56t4l-visit
+I0118 23:00:00.667693       1 controller.go:147] Service  has been deregistered in Consul with ID: visit-f8c7964d9-r2pm2-visit
+I0118 23:00:00.668493       1 controller.go:147] Service  has been deregistered in Consul with ID: visit-f8c7964d9-srvlh-visit
+I0118 23:00:00.668536       1 main.go:117] Cleaning has been ended
+```
+
+And it should show up in consul under the name defined in the yaml file: `visit-nodeport`
+
+```
+$ dig @172.17.0.4 -p 8600 visit-nodeport.service.consul +short
+192.168.99.100
+```
+
+And the SRV record is populated as well.
+
+```
+$ dig @172.17.0.4 -p 8600 visit-nodeport.service.consul -t srv +short
+1 1 31352 c0a86364.addr.dc1.consul.
 ```
