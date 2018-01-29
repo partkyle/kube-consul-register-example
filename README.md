@@ -26,7 +26,7 @@ The file [consul](consul) directory includes a service
 and a deployment for consul. Apply it to kubernetes using the following:
 
 ```
-cat consul/*.yaml | kubectl create -f -
+$ kubectl create -f consul
 deployment "consul" created
 service "consul" created
 ```
@@ -73,7 +73,7 @@ map includes many of the tuning options for the. For this example, we are using
 pod based discovery, which will insert a service entry for each pod.
 
 ```
-$ cat kube-consul-register/*.yaml | kubectl create -f -
+$ kubectl create -f kube-consul-register
 configmap "kube-consul-register" created
 deployment "kube-consul-register" created
 ```
@@ -103,7 +103,7 @@ so it needs to be in its own pod.
 To start it use yaml in the [redis-master](redis-master) directory.
 
 ```
-$ cat redis-master/*.yaml | kubectl create -f -
+$ kubectl create -f redis-master
 deployment "redis-master" created
 service "redis-master" created
 ```
@@ -165,7 +165,7 @@ Now that everything is in place, we can test the consul integration using
 deployment of a container that's hosted on hub.docker.com.
 
 ```
-$ cat visit/*.yaml | kubectl create -f -
+$ kubectl create -f visit
 configmap "visit" created
 deployment "visit" created
 service "visit" created
