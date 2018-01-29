@@ -20,4 +20,3 @@ data:
 kind: ConfigMap
 metadata:
   name: kube-consul-register
-  namespace: default

@@ -1,0 +1,15 @@
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: kube-consul-register-view
+subjects:
+- kind: ServiceAccount
+  name: kube-consul-register
+  namespace: default
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: ""

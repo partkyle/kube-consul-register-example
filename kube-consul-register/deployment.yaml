@@ -14,6 +14,7 @@ spec:
       labels:
         app: kube-consul-register
     spec:
+      serviceAccountName: kube-consul-register
       containers:
       - name: kube-consul-register
         image: tczekajlo/kube-consul-register:0.1.6
